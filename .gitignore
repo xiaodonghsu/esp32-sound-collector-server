@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+.env
+
+# Tests files
+tests/
+
+# Environment variable files
+.env
+
+# Agents files
+AGENTS.md
