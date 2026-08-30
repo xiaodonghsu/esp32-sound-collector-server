@@ -20,7 +20,11 @@ class Settings:
     def from_env(cls) -> "Settings":
         # Explicitly use the launch directory so behavior is predictable under
         # uvicorn, scripts and service managers. Existing process variables win.
-        load_dotenv(dotenv_path=Path.cwd() / ".env", override=False)
+        dotenv_path = Path.cwd() / ".env"
+        if dotenv_path.exists():
+            load_dotenv(dotenv_path=Path.cwd() / ".env", override=False)
+        else:
+            load_dotenv("/app/data/.env", override=False)
         return cls(
             emqx_base_url=os.getenv(
                 "EMQX_BASE_URL", "http://192.168.4.244:18083/api/v5"

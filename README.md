@@ -12,55 +12,78 @@ python -m venv .venv
 pip install -r requirements.txt
 Copy-Item .env.example .env
 # 编辑 .env，填写 EMQX_API_KEY 和 EMQX_SECRET_KEY
-uvicorn app.main:app --host 0.0.0.0 --port 8000
+uvicorn app.main:app --host 0.0.0.0 --port 8060
 ```
 
 ## Docker 运行
 
-构建镜像：
+构建镜像并推送到私有仓库：
 
 ```bash
-docker build -t esp32-sound-collector-server .
+docker build -t nuc10.i.uassist.cn:5000/esp32-sound-collector-server:latest .
+docker push nuc10.i.uassist.cn:5000/esp32-sound-collector-server:latest
 ```
 
-启动容器。EMQX 凭据通过环境变量传入，不会打包进镜像；命名卷会
-持久化 `clients.yml` 中的设备配置：
+### Linux 部署
+
+该私有仓库使用 HTTP。先将以下配置合并到 Linux 主机的
+`/etc/docker/daemon.json`，然后重启 Docker：
+
+```json
+{
+  "insecure-registries": ["nuc10.i.uassist.cn:5000"]
+}
+```
 
 ```bash
-docker run --rm -p 8000:8000 \
-  --env-file .env \
-  -v esp32-clients:/app/data \
-  esp32-sound-collector-server
+sudo systemctl restart docker
 ```
 
-Windows PowerShell 使用：
+应用使用 UID/GID `10001:10001` 运行。先在 Linux 宿主机准备配置目录，
+并赋予容器用户写权限：
 
-```powershell
-docker run --rm -p 8000:8000 `
-  --env-file .env `
-  --mount "type=volume,source=esp32-clients,target=/app/data" `
-  esp32-sound-collector-server
+```bash
+sudo install -d -o 10001 -g 10001 /home/jh/esp32-sound-collector-server/data
+sudo install -o 10001 -g 10001 -m 0644 clients.yml \
+  /home/jh/esp32-sound-collector-server/data/clients.yml
+sudo install -m 0600 .env /home/jh/esp32-sound-collector-server/data/.env
 ```
 
-如果需要映射宿主机目录，应挂载包含 `clients.yml` 的整个目录，而不要只
-挂载单个文件，以便应用能够原子更新配置。
+拉取并启动容器：
 
-健康检查地址为 `http://localhost:8000/health`。部署平台也可以通过 `PORT`
+```bash
+docker stop esp32-sound-collector-server
+docker rm esp32-sound-collector-server
+
+docker pull nuc10.i.uassist.cn:5000/esp32-sound-collector-server:latest
+docker run -d \
+  --name esp32-sound-collector-server \
+  --restart unless-stopped \
+  -p 8060:8060 \
+  -v /home/jh/esp32-sound-collector-server/data:/app/data \
+  nuc10.i.uassist.cn:5000/esp32-sound-collector-server:latest
+
+```
+
+必须挂载包含 `clients.yml` 的整个目录，而不能只挂载单个文件；应用通过
+临时文件和原子替换更新配置，需要对目录拥有写权限。
+
+健康检查地址为 `http://localhost:8060/health`。部署平台也可以通过 `PORT`
 环境变量覆盖监听端口。
 
 应用启动时会自动读取当前工作目录中的 `.env`。已存在的系统环境变量优先于 `.env`；默认 EMQX 地址为 `http://192.168.4.244:18083/api/v5`，全部变量见 `.env.example`。出于安全考虑，仓库不保存真实 API 凭据。
 
 启动后可访问：
 
-- OpenAPI 文档：`http://localhost:8000/docs`
-- 健康检查：`GET http://localhost:8000/health`
+- OpenAPI 文档：`http://localhost:8060/docs`
+- 健康检查：`GET http://localhost:8060/health`
 
 ## API 示例
 
 添加设备（相同 `id` 表示更新；不同设备不能使用相同 `name`）：
 
 ```bash
-curl -X POST http://localhost:8000/configure/client \
+curl -X POST http://localhost:8060/configure/client \
   -H "Content-Type: application/json" \
   -d '{"id":"2884856cbfa4","name":"meeting-root-411","location":"会议室 411","type":"XVF3800"}'
 ```
@@ -68,7 +91,7 @@ curl -X POST http://localhost:8000/configure/client \
 查询设备配置与 EMQX 在线状态：
 
 ```bash
-curl "http://localhost:8000/configure/client?name=meeting-root-411"
+curl "http://localhost:8060/configure/client?name=meeting-root-411"
 ```
 
 查询结果统一使用 `clients` 数组；指定设备时，EMQX 实时信息位于该设备的 `status` 字段：
@@ -90,13 +113,13 @@ curl "http://localhost:8000/configure/client?name=meeting-root-411"
 不提供 `id` 或 `name` 时返回 `clients.yml` 中的全部设备配置，并且不会查询 EMQX：
 
 ```bash
-curl "http://localhost:8000/configure/client"
+curl "http://localhost:8060/configure/client"
 ```
 
 删除设备（请求体只能提供 `id` 或 `name` 中的一个）：
 
 ```bash
-curl -X DELETE http://localhost:8000/configure/client \
+curl -X DELETE http://localhost:8060/configure/client \
   -H "Content-Type: application/json" \
   -d '{"id":"2884856cbfa4"}'
 ```
@@ -104,7 +127,7 @@ curl -X DELETE http://localhost:8000/configure/client \
 开始录音：
 
 ```bash
-curl -X POST http://localhost:8000/client/control \
+curl -X POST http://localhost:8060/client/control \
   -H "Content-Type: application/json" \
   -d '{"name":"meeting-root-411","cmd":"start","url":"ws://192.168.4.250:10345/v1/recorder?id=abc","segment":200}'
 ```
@@ -112,7 +135,7 @@ curl -X POST http://localhost:8000/client/control \
 设置设备参数：
 
 ```bash
-curl -X POST http://localhost:8000/client/control \
+curl -X POST http://localhost:8060/client/control \
   -H "Content-Type: application/json" \
   -d '{"id":"2884856cbfa4","cmd":"set","parameters":[{"para":"LED_EFFECT","value":1},{"para":"LED_BRIGHTNESS","value":50}]}'
 ```
