@@ -80,12 +80,6 @@ class ControlRequest(BaseModel):
         description="目标设备名称；与 id 必须且只能提供一个。",
         examples=["meeting-root-411"],
     )
-    mid: str | None = Field(
-        default=None,
-        min_length=1,
-        description="消息 ID，用于关联请求和设备响应；不提供时由服务端生成 UUID。",
-        examples=["6F9619FF-8B86-D011-B42D-00C04FC964FF"],
-    )
     cmd: Literal["start", "stop", "status", "set"] = Field(
         description="控制命令：start 启动录音，stop 停止录音，status 获取状态，set 设置参数。",
         examples=["status"],

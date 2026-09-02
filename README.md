@@ -140,7 +140,7 @@ curl -X POST http://localhost:8060/client/control \
   -d '{"id":"2884856cbfa4","cmd":"set","parameters":[{"para":"LED_EFFECT","value":1},{"para":"LED_BRIGHTNESS","value":50}]}'
 ```
 
-`mid` 可由调用方提供；省略时服务会自动生成 UUID。除 `id` 和 `name` 外，控制请求中的扩展字段会原样转发到设备。`start` 未给出 `segment` 时默认为 `200` ms。
+`mid` 不属于接口入参，每次请求均由服务自动生成 UUID，并仅用于 MQTT 通信。为兼容旧调用方，请求中即使携带 `mid` 也会被系统生成值覆盖。除 `id`、`name` 和 `mid` 外，控制请求中的扩展字段会原样转发到设备。`start` 未给出 `segment` 时默认为 `200` ms。
 
 `POST /client/control` 会提取 EMQX 同步请求响应中的 Base64 `payload`，解码并解析 JSON，然后直接以该 JSON 作为 API 响应；EMQX 的外层响应字段不会返回给调用方。
 

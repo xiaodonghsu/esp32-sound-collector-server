@@ -155,7 +155,10 @@ def create_app(
         raw = command.model_dump(exclude_none=True)
         raw.pop("id", None)
         raw.pop("name", None)
-        raw["mid"] = command.mid or str(uuid4())
+        # mid is an internal MQTT correlation ID and must never be controlled by
+        # the REST caller. This assignment also replaces a legacy mid supplied as
+        # an extra field by an older client.
+        raw["mid"] = str(uuid4())
         if command.cmd == "start" and command.segment is None:
             raw["segment"] = 200
         return await request.app.state.emqx.control(client.id, raw)
