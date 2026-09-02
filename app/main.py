@@ -54,6 +54,8 @@ def create_app(
         "/configure/client",
         tags=["configuration"],
         status_code=status.HTTP_200_OK,
+        summary="添加或修改客户端",
+        description="按客户端 ID 新增或更新设备配置；客户端 ID 和名称均不可重复。",
     )
     async def upsert_client(request: Request, client: ClientConfig) -> JSONResponse:
         saved, created = request.app.state.repository.upsert(client)
@@ -65,20 +67,51 @@ def create_app(
             },
         )
 
-    @app.delete("/configure/client", tags=["configuration"])
+    @app.delete(
+        "/configure/client",
+        tags=["configuration"],
+        summary="删除客户端",
+        description="通过客户端 ID 或设备名称删除一个已有客户端。",
+    )
     async def delete_client(
-        request: Request, selector: Annotated[ClientSelector, Body()]
+        request: Request,
+        selector: Annotated[
+            ClientSelector,
+            Body(description="客户端选择条件，id 和 name 必须且只能提供一个。"),
+        ],
     ) -> dict[str, Any]:
         removed = request.app.state.repository.delete(
             client_id=selector.id, name=selector.name
         )
         return {"deleted": True, "client": removed.model_dump(exclude_none=True)}
 
-    @app.get("/configure/client", tags=["configuration"])
+    @app.get(
+        "/configure/client",
+        tags=["configuration"],
+        summary="查询客户端",
+        description=(
+            "提供 id 或 name 时返回单个客户端配置及 EMQX 实时连接状态；"
+            "不提供时返回全部本地配置，但不查询实时状态。"
+        ),
+    )
     async def get_client(
         request: Request,
-        id: Annotated[str | None, Query(min_length=1)] = None,
-        name: Annotated[str | None, Query(min_length=1)] = None,
+        id: Annotated[
+            str | None,
+            Query(
+                min_length=1,
+                description="ESP32 客户端 ID；查询单个设备时与 name 二选一。",
+                examples=["2884856cbfa4"],
+            ),
+        ] = None,
+        name: Annotated[
+            str | None,
+            Query(
+                min_length=1,
+                description="设备名称；查询单个设备时与 id 二选一。",
+                examples=["meeting-root-411"],
+            ),
+        ] = None,
     ) -> dict[str, Any]:
         if id is None and name is None:
             clients = request.app.state.repository.list()
@@ -104,7 +137,15 @@ def create_app(
             ]
         }
 
-    @app.post("/client/control", tags=["control"])
+    @app.post(
+        "/client/control",
+        tags=["control"],
+        summary="控制客户端",
+        description=(
+            "按客户端 ID 或设备名称向 ESP32 发送同步 MQTT 控制消息，"
+            "等待设备响应并返回响应负载。"
+        ),
+    )
     async def control_client(
         request: Request, command: ControlRequest
     ) -> Any:
