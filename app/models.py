@@ -86,14 +86,15 @@ class ControlRequest(BaseModel):
     )
     url: str | None = Field(
         default=None,
-        description="音频上传 WebSocket 地址；cmd 为 start 时必填。",
-        examples=["ws://192.168.4.250:10345/v1/recorder?id=meeting-001"],
-    )
-    segment: int | None = Field(
-        default=None,
-        gt=0,
-        description="语音采集分包时长，单位为毫秒；cmd 为 start 且未提供时默认为 200。",
-        examples=[200],
+        description=(
+            "音频上传 WebSocket 地址，cmd 为 start 时必填。采样参数通过 URL 查询参数指定："
+            "segment 为分包时长（默认 200 ms），samplerate 为采样率（默认 16 kHz），"
+            "bitrate 为位深（默认 16 bit），channel 为通道数（默认 1，单声道）。"
+        ),
+        examples=[
+            "ws://192.168.41.15:12345/v1/recorder?id=68ee8f518e44"
+            "&segment=200&samplerate=16&bitrate=16&channel=1"
+        ],
     )
     parameters: list[Parameter] | None = Field(
         default=None,
@@ -110,7 +111,10 @@ class ControlRequest(BaseModel):
         extra="allow",
         str_strip_whitespace=True,
         json_schema_extra={
-            "description": "控制字段之外的额外参数也会原样加入发送给设备的 MQTT 负载。"
+            "description": (
+                "控制字段之外的额外参数也会原样加入发送给设备的 MQTT 负载；"
+                "mid 由系统生成，segment 必须包含在 url 中，二者均不是接口入参。"
+            )
         },
     )
 

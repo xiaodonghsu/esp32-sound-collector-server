@@ -143,7 +143,8 @@ def create_app(
         summary="控制客户端",
         description=(
             "按客户端 ID 或设备名称向 ESP32 发送同步 MQTT 控制消息，"
-            "等待设备响应并返回响应负载。"
+            "等待设备响应并返回响应负载。start 命令的采样参数 segment、"
+            "samplerate、bitrate 和 channel 通过 WebSocket URL 查询参数传递。"
         ),
     )
     async def control_client(
@@ -155,12 +156,13 @@ def create_app(
         raw = command.model_dump(exclude_none=True)
         raw.pop("id", None)
         raw.pop("name", None)
+        # segment is carried in the WebSocket URL. Drop the former top-level
+        # field if an older caller still sends it as an extra parameter.
+        raw.pop("segment", None)
         # mid is an internal MQTT correlation ID and must never be controlled by
         # the REST caller. This assignment also replaces a legacy mid supplied as
         # an extra field by an older client.
         raw["mid"] = str(uuid4())
-        if command.cmd == "start" and command.segment is None:
-            raw["segment"] = 200
         return await request.app.state.emqx.control(client.id, raw)
 
     return app

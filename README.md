@@ -129,7 +129,7 @@ curl -X DELETE http://localhost:8060/configure/client \
 ```bash
 curl -X POST http://localhost:8060/client/control \
   -H "Content-Type: application/json" \
-  -d '{"name":"meeting-root-411","cmd":"start","url":"ws://192.168.4.250:10345/v1/recorder?id=abc","segment":200}'
+  -d '{"name":"meeting-root-411","cmd":"start","url":"ws://192.168.41.15:12345/v1/recorder?id=68ee8f518e44&segment=200&samplerate=16&bitrate=16&channel=1"}'
 ```
 
 设置设备参数：
@@ -140,7 +140,9 @@ curl -X POST http://localhost:8060/client/control \
   -d '{"id":"2884856cbfa4","cmd":"set","parameters":[{"para":"LED_EFFECT","value":1},{"para":"LED_BRIGHTNESS","value":50}]}'
 ```
 
-`mid` 不属于接口入参，每次请求均由服务自动生成 UUID，并仅用于 MQTT 通信。为兼容旧调用方，请求中即使携带 `mid` 也会被系统生成值覆盖。除 `id`、`name` 和 `mid` 外，控制请求中的扩展字段会原样转发到设备。`start` 未给出 `segment` 时默认为 `200` ms。
+`mid` 不属于接口入参，每次请求均由服务自动生成 UUID，并仅用于 MQTT 通信。为兼容旧调用方，请求中即使携带 `mid` 也会被系统生成值覆盖。
+
+`segment` 不再作为顶层接口参数，语音采集要求统一通过 `url` 的查询参数指定：`segment` 为分包时长（默认 `200` ms）、`samplerate` 为采样率（默认 `16` kHz）、`bitrate` 为位深（默认 `16` bit）、`channel` 为通道数（默认 `1`，单声道）。旧调用方携带的顶层 `segment` 会被忽略。除 `id`、`name`、`mid` 和顶层 `segment` 外，控制请求中的扩展字段会原样转发到设备。
 
 `POST /client/control` 会提取 EMQX 同步请求响应中的 Base64 `payload`，解码并解析 JSON，然后直接以该 JSON 作为 API 响应；EMQX 的外层响应字段不会返回给调用方。
 
