@@ -6,7 +6,7 @@ from uuid import uuid4
 from fastapi import Body, FastAPI, HTTPException, Query, Request, status
 from fastapi.responses import JSONResponse
 
-from app.emqx import EmqxClient, EmqxError
+from app.emqx import EmqxClient, EmqxClientNotFoundError, EmqxError
 from app.models import ClientConfig, ClientSelector, ControlRequest
 from app.repository import (
     ClientConflictError,
@@ -127,11 +127,22 @@ def create_app(
         local = request.app.state.repository.get(
             client_id=selector.id, name=selector.name
         )
-        emqx_data = await request.app.state.emqx.get_client(local.id)
+        try:
+            emqx_data = await request.app.state.emqx.get_client(local.id)
+        except EmqxClientNotFoundError:
+            return {
+                "clients": [
+                    {
+                        **local.model_dump(exclude_none=True),
+                        "online": False,
+                    }
+                ]
+            }
         return {
             "clients": [
                 {
                     **local.model_dump(exclude_none=True),
+                    "online": True,
                     "status": emqx_data,
                 }
             ]

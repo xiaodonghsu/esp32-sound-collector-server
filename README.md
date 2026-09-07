@@ -129,7 +129,15 @@ curl -X DELETE http://localhost:8060/configure/client \
 ```bash
 curl -X POST http://localhost:8060/client/control \
   -H "Content-Type: application/json" \
-  -d '{"name":"meeting-root-411","cmd":"start","url":"ws://192.168.41.15:12345/v1/recorder?id=68ee8f518e44&segment=200&samplerate=16&bitrate=16&channel=1"}'
+  -d '{"name":"meeting-root-411","cmd":"start","url":"ws://192.168.41.15:12345/v1/recorder?id=6F9619FF-8B86-D011-B42D-00C04FC964FF&segment=200&samplerate=16&bitrate=16&channel=1"}'
+```
+
+结束录音：
+
+```bash
+curl -X POST http://localhost:8060/client/control \
+  -H "Content-Type: application/json" \
+  -d '{"id":"2884856cbfa4","cmd":"stop"}'
 ```
 
 设置设备参数：

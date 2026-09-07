@@ -16,6 +16,13 @@ class EmqxError(RuntimeError):
         self.status_code = status_code
 
 
+class EmqxClientNotFoundError(EmqxError):
+    """The client exists locally but is not currently known to EMQX."""
+
+    def __init__(self) -> None:
+        super().__init__("ESP32 客户端当前未连接到 EMQX", status_code=404)
+
+
 class EmqxClient:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
@@ -43,6 +50,16 @@ class EmqxClient:
             raise EmqxError(f"无法连接 EMQX: {exc}") from exc
 
         if response.status_code == 404:
+            try:
+                error_data = response.json()
+            except ValueError:
+                error_data = None
+            if isinstance(error_data, dict) and error_data.get("code") in {
+                "CLIENTID_NOT_FOUND",
+                # Also accept the spelling used by some integrations.
+                "CLENTID_NOT_FOUND",
+            }:
+                raise EmqxClientNotFoundError
             raise EmqxError("ESP32 客户端当前未连接到 EMQX", status_code=404)
         if response.is_error:
             detail = response.text[:500]
