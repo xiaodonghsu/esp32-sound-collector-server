@@ -4,6 +4,7 @@ from typing import Annotated, Any
 from uuid import uuid4
 
 from fastapi import Body, FastAPI, HTTPException, Query, Request, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.emqx import EmqxClient, EmqxClientNotFoundError, EmqxError
@@ -26,6 +27,13 @@ def create_app(
         title="ESP32 Sound Collector Server",
         version="1.0.0",
         description="将上游 REST API 控制请求转换为面向 ESP32 录音设备的 MQTT 消息。",
+    )
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
     app.state.repository = repository or ClientRepository(resolved_settings.clients_file)
     app.state.emqx = emqx or EmqxClient(resolved_settings)
