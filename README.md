@@ -12,8 +12,21 @@ python -m venv .venv
 pip install -r requirements.txt
 Copy-Item .env.example .env
 # 编辑 .env，填写 EMQX_API_KEY 和 EMQX_SECRET_KEY
-uvicorn app.main:app --host 0.0.0.0 --port 8060
+uvicorn app.main:app --host 0.0.0.0 --port 8060 --log-config logging.yml
 ```
+
+## 控制消息日志
+
+启动时加载 `logging.yml`，为 API、MQTT、服务运行及 HTTP 访问日志添加消息记录时间
+（精确到毫秒，采用运行环境的本地时区）。Docker 默认启动命令已加载此配置。
+
+默认 Uvicorn INFO 日志会输出 `/client/control` 通过校验后的原始请求（`API IN`）、
+转换后的下发负载（`API OUT`）、返回上游的设备响应或 EMQX 错误（`API RESPONSE`）。
+同时输出通过 EMQX 同步接口提交的 MQTT 消息（`MQTT SEND`）、接口返回的原始消息
+（`MQTT RECEIVE`）和 Base64 解码后的设备负载（`MQTT RECEIVE DECODED`）。
+日志包含设备 ID、生成的 mid、主题及完整负载，便于核对 URL 和追踪收发。
+`MQTT SEND` 表示提交发送请求，不代表设备已收到。容器中可通过
+`docker logs -f esp32-sound-collector-server` 查看日志。
 
 ## Docker 运行
 
@@ -153,6 +166,14 @@ curl -X POST http://localhost:8060/client/control \
 `segment` 不再作为顶层接口参数，语音采集要求统一通过 `url` 的查询参数指定：`segment` 为分包时长（默认 `200` ms）、`samplerate` 为采样率（默认 `16` kHz）、`bitrate` 为位深（默认 `16` bit）、`channel` 为通道数（默认 `1`，单声道）。旧调用方携带的顶层 `segment` 会被忽略。除 `id`、`name`、`mid` 和顶层 `segment` 外，控制请求中的扩展字段会原样转发到设备。
 
 `POST /client/control` 会提取 EMQX 同步请求响应中的 Base64 `payload`，解码并解析 JSON，然后直接以该 JSON 作为 API 响应；EMQX 的外层响应字段不会返回给调用方。
+
+设备负载中 `result` 为 `failed` 时返回 HTTP **502**，响应体直接返回移除 `mid` 后的错误内容，例如：
+
+```json
+{"result":"failed","message":"ESP_ERR_INVALID_STATE"}
+```
+
+HTTP 请求超时、EMQX 返回 HTTP 408/504，或 EMQX 同步请求返回超时错误时，返回 HTTP **504**，响应体为 `{"detail":"超时原因"}`。成功响应保持原有格式。
 
 ## 测试
 

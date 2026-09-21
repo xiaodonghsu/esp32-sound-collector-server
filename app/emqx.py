@@ -3,11 +3,22 @@ from __future__ import annotations
 import base64
 import binascii
 import json
+import logging
 from typing import Any
 
 import httpx
 
 from app.settings import Settings
+
+logger = logging.getLogger("uvicorn.error.emqx")
+
+
+def _is_timeout(data: dict[str, Any]) -> bool:
+    return any(
+        marker in str(data.get(field, "")).lower()
+        for field in ("code", "message")
+        for marker in ("timeout", "timed out", "超时")
+    )
 
 
 class EmqxError(RuntimeError):
@@ -62,6 +73,14 @@ class EmqxClient:
                 raise EmqxClientNotFoundError
             raise EmqxError("ESP32 客户端当前未连接到 EMQX", status_code=404)
         if response.is_error:
+            try:
+                error_data = response.json()
+            except ValueError:
+                error_data = None
+            if response.status_code in {408, 504} or (
+                isinstance(error_data, dict) and _is_timeout(error_data)
+            ):
+                raise EmqxError("请求 EMQX 超时", status_code=504)
             detail = response.text[:500]
             raise EmqxError(
                 f"EMQX 返回 HTTP {response.status_code}: {detail}",
@@ -93,9 +112,19 @@ class EmqxClient:
             },
             "timeout": self.settings.emqx_sync_timeout,
         }
+        logger.info(
+            "MQTT SEND client_id=%s mid=%s request=%s",
+            client_id, payload.get("mid"), json.dumps(body, ensure_ascii=False),
+        )
         result = await self._request(
             "POST", "/plugin_api/emqx_sync_request/request", json=body
         )
+        logger.info(
+            "MQTT RECEIVE client_id=%s mid=%s response=%s",
+            client_id, payload.get("mid"), json.dumps(result, ensure_ascii=False),
+        )
+        if result.get("code") != "OK" and _is_timeout(result):
+            raise EmqxError("EMQX 同步请求等待设备响应超时", status_code=504)
         response = result.get("response")
         if not isinstance(response, dict):
             raise EmqxError("EMQX 同步请求未返回设备响应")
@@ -106,6 +135,11 @@ class EmqxClient:
             decoded_text = base64.b64decode(encoded, validate=True).decode("utf-8")
         except (binascii.Error, UnicodeDecodeError) as exc:
             raise EmqxError("EMQX 响应中的 Base64 payload 无法解码") from exc
+        logger.info(
+            "MQTT RECEIVE DECODED client_id=%s mid=%s topic=%s payload=%s",
+            client_id, payload.get("mid"), response.get("topic", f"from/recorder/{client_id}"),
+            decoded_text,
+        )
         try:
             return json.loads(decoded_text)
         except json.JSONDecodeError as exc:

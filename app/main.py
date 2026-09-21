@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import logging
 from typing import Annotated, Any
 from uuid import uuid4
 
@@ -15,6 +17,8 @@ from app.repository import (
     ClientRepository,
 )
 from app.settings import Settings
+
+logger = logging.getLogger("uvicorn.error.control")
 
 
 def create_app(
@@ -164,11 +168,13 @@ def create_app(
             "按客户端 ID 或设备名称向 ESP32 发送同步 MQTT 控制消息，"
             "等待设备响应并返回响应负载。start 命令的采样参数 segment、"
             "samplerate、bitrate 和 channel 通过 WebSocket URL 查询参数传递。"
+            "设备返回 failed 时响应 502，响应体为移除 mid 的设备负载；超时响应 504。"
         ),
     )
     async def control_client(
         request: Request, command: ControlRequest
     ) -> Any:
+        logger.info("API IN /client/control payload=%s", json.dumps(await request.json(), ensure_ascii=False))
         client = request.app.state.repository.get(
             client_id=command.id, name=command.name
         )
@@ -182,7 +188,30 @@ def create_app(
         # the REST caller. This assignment also replaces a legacy mid supplied as
         # an extra field by an older client.
         raw["mid"] = str(uuid4())
-        return await request.app.state.emqx.control(client.id, raw)
+        logger.info(
+            "API OUT to EMQX client_id=%s mid=%s payload=%s",
+            client.id, raw["mid"], json.dumps(raw, ensure_ascii=False),
+        )
+        try:
+            result = await request.app.state.emqx.control(client.id, raw)
+        except EmqxError as exc:
+            logger.error(
+                "API RESPONSE /client/control client_id=%s mid=%s status=%s detail=%s",
+                client.id, raw["mid"], exc.status_code, str(exc),
+            )
+            raise
+        if isinstance(result, dict) and result.get("result") == "failed":
+            error_payload = {key: value for key, value in result.items() if key != "mid"}
+            logger.error(
+                "API RESPONSE /client/control client_id=%s mid=%s status=502 payload=%s",
+                client.id, raw["mid"], json.dumps(error_payload, ensure_ascii=False),
+            )
+            return JSONResponse(status_code=502, content=error_payload)
+        logger.info(
+            "API RESPONSE /client/control client_id=%s mid=%s payload=%s",
+            client.id, raw["mid"], json.dumps(result, ensure_ascii=False),
+        )
+        return result
 
     return app
 
