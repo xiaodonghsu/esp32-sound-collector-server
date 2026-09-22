@@ -17,6 +17,7 @@ RUN addgroup --system --gid 10001 app \
 COPY app ./app
 COPY logging.yml ./logging.yml
 COPY clients.yml ./data/clients.yml
+COPY .env ./.env
 
 RUN chown -R app:app /app/data
 

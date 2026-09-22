@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import asynccontextmanager
 from typing import Annotated, Any
 from uuid import uuid4
 
@@ -10,6 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.emqx import EmqxClient, EmqxClientNotFoundError, EmqxError
+from app.connection_history import ConnectionHistory, ConnectionMonitor
 from app.models import ClientConfig, ClientSelector, ControlRequest
 from app.repository import (
     ClientConflictError,
@@ -27,7 +29,20 @@ def create_app(
     emqx: EmqxClient | None = None,
 ) -> FastAPI:
     resolved_settings = settings or Settings.from_env()
+    resolved_repository = repository or ClientRepository(resolved_settings.clients_file)
+    history = ConnectionHistory(resolved_repository.path.parent)
+    monitor = ConnectionMonitor(resolved_settings, history)
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        monitor.start()
+        try:
+            yield
+        finally:
+            monitor.stop()
+
     app = FastAPI(
+        lifespan=lifespan,
         title="ESP32 Sound Collector Server",
         version="1.0.0",
         description="将上游 REST API 控制请求转换为面向 ESP32 录音设备的 MQTT 消息。",
@@ -39,8 +54,10 @@ def create_app(
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    app.state.repository = repository or ClientRepository(resolved_settings.clients_file)
+    app.state.repository = resolved_repository
     app.state.emqx = emqx or EmqxClient(resolved_settings)
+    app.state.connection_history = history
+    app.state.connection_monitor = monitor
 
     @app.exception_handler(ClientNotFoundError)
     async def client_not_found_handler(
@@ -102,7 +119,7 @@ def create_app(
         tags=["configuration"],
         summary="查询客户端",
         description=(
-            "提供 id 或 name 时返回单个客户端配置及 EMQX 实时连接状态；"
+            "提供 id 或 name 时返回单个客户端配置、EMQX 实时连接状态及最近两条上下线记录 connection_history；"
             "不提供时返回全部本地配置，但不查询实时状态。"
         ),
     )
@@ -139,6 +156,7 @@ def create_app(
         local = request.app.state.repository.get(
             client_id=selector.id, name=selector.name
         )
+        connection_history = request.app.state.connection_history.recent(local.id)
         try:
             emqx_data = await request.app.state.emqx.get_client(local.id)
         except EmqxClientNotFoundError:
@@ -147,6 +165,7 @@ def create_app(
                     {
                         **local.model_dump(exclude_none=True),
                         "online": False,
+                        "connection_history": connection_history,
                     }
                 ]
             }
@@ -155,6 +174,7 @@ def create_app(
                 {
                     **local.model_dump(exclude_none=True),
                     "online": True,
+                    "connection_history": connection_history,
                     "status": emqx_data,
                 }
             ]

@@ -15,6 +15,10 @@ class Settings:
     emqx_timeout_seconds: float
     emqx_sync_timeout: str
     clients_file: Path
+    mqtt_host: str = "192.168.4.244"
+    mqtt_port: int = 1883
+    mqtt_username: str = "sys_recorders"
+    mqtt_password: str = "bestlink"
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -34,4 +38,8 @@ class Settings:
             emqx_timeout_seconds=float(os.getenv("EMQX_TIMEOUT_SECONDS", "10")),
             emqx_sync_timeout=os.getenv("EMQX_SYNC_TIMEOUT", "5s"),
             clients_file=Path(os.getenv("CLIENTS_FILE", "clients.yml")),
+            mqtt_host=os.getenv("MQTT_HOST", "192.168.4.244"),
+            mqtt_port=int(os.getenv("MQTT_PORT", "1883")),
+            mqtt_username=os.getenv("MQTT_USERNAME", "sys_recorders"),
+            mqtt_password=os.getenv("MQTT_PASSWORD", "bestlink"),
         )

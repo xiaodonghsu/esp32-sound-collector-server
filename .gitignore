@@ -5,7 +5,8 @@ __pycache__/
 .env
 
 # Tests files
-tests/
+tests/*
+!tests/test_connection_history.py
 
 # Environment variable files
 .env

@@ -28,6 +28,50 @@ uvicorn app.main:app --host 0.0.0.0 --port 8060 --log-config logging.yml
 `MQTT SEND` 表示提交发送请求，不代表设备已收到。容器中可通过
 `docker logs -f esp32-sound-collector-server` 查看日志。
 
+## 设备上下线记录
+
+服务启动后使用 `sys_recorders` 账号监听 MQTT 系统主题
+`$SYS/brokers/+/clients/+/connected` 和
+`$SYS/brokers/+/clients/+/disconnected`，仅保存 `username` 为 `Recorders`
+的消息（包括尚未加入 clients.yml 的设备）。默认连接 `192.168.4.244:1883`，
+可通过 `.env` 中的 `MQTT_HOST`、`MQTT_PORT`、`MQTT_USERNAME`、`MQTT_PASSWORD` 覆盖。
+该账号需有这两个系统主题的订阅权限，EMQX 需开启相应系统事件发布。
+连接失败会在后台自动重试，重连成功后重新订阅；服务停机或断线期间的历史消息无法补回。
+
+测试EMQX的服务端命令:
+```bash
+mosquitto_sub -h 192.168.4.244 -p 11883 -t '$SYS/brokers/+/clients/+/connected' -t '$SYS/brokers/+/clients/+/disconnected' -u sys_recorders -P bestlink
+```
+
+日志位于 `clients.yml` 同目录下的 `<clientid>.json`，内容为 JSON 数组。
+每条保留原消息字段，增加 `event`（`connected` / `disconnected`）和 `topic`。
+按原消息 `ts`（Unix 毫秒）倒序保存最近 7 天的数据；写入、查询和每分钟巡检时清理
+过期记录，因此空闲文件的物理清理最多延迟一分钟。文件采用原子替换写入。
+请以单个服务实例、单个 Uvicorn worker 使用同一数据目录，避免多个进程并发覆盖日志。
+设备 ID 作为文件名时仅接受字母、数字、下划线、连字符和点，且不能以点开头或结尾、不能是 Windows 保留名称。
+
+`GET /configure/client?id=2884856cbfa4`（也支持 `name` 查询）在设备对象中增加
+`connection_history`，按时间从新到旧返回最多两条记录，无记录时为 `[]`。
+设备离线时也返回历史记录；不带查询条件的列表接口仍仅返回配置。
+
+```json
+{
+  "clients": [{
+    "id": "2884856cbfa4",
+    "name": "meeting-root-411",
+    "online": false,
+    "connection_history": [{
+      "event": "disconnected",
+      "topic": "$SYS/brokers/emqx@172.17.0.5/clients/2884856cbfa4/disconnected",
+      "clientid": "2884856cbfa4",
+      "username": "Recorders",
+      "ts": 1789981555275,
+      "reason": "keepalive_timeout"
+    }]
+  }]
+}
+```
+
 ## Docker 运行
 
 构建镜像并推送到私有仓库：
